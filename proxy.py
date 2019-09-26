@@ -31,6 +31,9 @@ from multiprocessing.reduction import send_handle, recv_handle
 from typing import Any, Dict, List, Tuple, Optional, Union, NamedTuple
 from urllib import parse as urlparse
 
+import psutil
+import random
+
 import select
 
 if os.name != 'nt':
@@ -201,6 +204,14 @@ class TcpConnection:
         return sent
 
 
+uplinks = []
+for name, addrs in psutil.net_if_addrs().items():
+    if name == "lo":
+        continue
+    if socket.AF_INET in [snicaddr.family for snicaddr in addrs]:
+        uplinks.append(name.encode('utf-8'))
+print(uplinks)
+
 class TcpServerConnection(TcpConnection):
     """Establishes connection to destination server."""
 
@@ -213,18 +224,26 @@ class TcpServerConnection(TcpConnection):
             self.close()
 
     def connect(self) -> None:
+        iface = random.choice(uplinks)
+        print(iface)
         try:
             ip = ipaddress.ip_address(text_(self.addr[0]))
             if ip.version == 4:
-                self.conn = socket.create_connection(
-                    (self.addr[0], self.addr[1]))
+                self.conn = socket.socket(
+                    socket.AF_INET, socket.SOCK_STREAM)
+                self.conn.setsockopt(socket.SOL_SOCKET, 25, iface)
+                self.conn.connect((self.addr[0], self.addr[1]))
             else:
                 self.conn = socket.socket(
                     socket.AF_INET6, socket.SOCK_STREAM, 0)
+                self.conn.setsockopt(socket.SOL_SOCKET, 25, iface)
                 self.conn.connect((self.addr[0], self.addr[1], 0, 0))
         except ValueError:
             # Not a valid IP address, most likely its a domain name.
-            self.conn = socket.create_connection((self.addr[0], self.addr[1]))
+            self.conn = socket.socket(
+                socket.AF_INET, socket.SOCK_STREAM)
+            self.conn.setsockopt(socket.SOL_SOCKET, 25, iface)
+            self.conn.connect((self.addr[0], self.addr[1]))
 
 
 class TcpClientConnection(TcpConnection):
