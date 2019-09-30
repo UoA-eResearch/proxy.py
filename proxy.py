@@ -1400,8 +1400,16 @@ class HttpProtocolHandler(threading.Thread):
             write_desc += plugin_write_desc
             err_desc += plugin_err_desc
 
-        readables, writables, errored = select.select(
-            read_desc, write_desc, err_desc, 1)
+        poller = select.poll()
+        for x in read_desc:
+            poller.register(x, select.POLLIN)
+        for x in write_desc:
+            poller.register(x, select.POLLOUT)
+        events = poller.poll()
+        readable_fids = [fid for fid,event in events if event & select.POLLIN]
+        writable_fids = [fid for fid,event in events if event & select.POLLOUT]
+        readables = [s for s in read_desc if s.fileno() in readable_fids]
+        writables = [s for s in write_desc if s.fileno() in writable_fids]
 
         # Flush buffer for ready to write sockets
         teardown = self.handle_writables(writables)
